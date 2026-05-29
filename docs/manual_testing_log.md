@@ -76,7 +76,7 @@ Retrieve the metadata of the uploaded document using the `document_id` returned 
 Retrieve the status and parser warnings (if any) of the processing job.
 
 ### Request Path
-* **document_id**: `YOUR_DOCUMENT_UUID`
+* **document_id**: `9ac22654-67c7-4f07-b068-f684544c9fba`
 
 ### API Response
 ```json

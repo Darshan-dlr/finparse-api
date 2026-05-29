@@ -38,6 +38,7 @@ class DocumentService:
         file: UploadFile,
         pdf_password: str | None,
         allow_reprocess: bool,
+        uploaded_by: str = "system",
     ) -> dict:
         """
         Full upload pipeline:
@@ -62,7 +63,7 @@ class DocumentService:
         # ── Save to storage ───────────────────────────────────────────────────
         if not is_reprocess:
             storage_path = await self._save_to_storage(validated)
-            document = await self._create_document(validated, storage_path)
+            document = await self._create_document(validated, storage_path, uploaded_by)
         else:
             document = existing_doc
 
@@ -380,7 +381,7 @@ class DocumentService:
         )
         return result.scalar_one_or_none()
 
-    async def _create_document(self, validated: ValidatedFile, storage_path: str) -> Document:
+    async def _create_document(self, validated: ValidatedFile, storage_path: str, uploaded_by: str = "system") -> Document:
         doc_type = (
             DocumentType.INVOICE
             if validated.file_extension == ".pdf"
@@ -394,6 +395,7 @@ class DocumentService:
             file_size_bytes=validated.file_size_bytes,
             checksum_sha256=validated.checksum_sha256,
             storage_path=storage_path,
+            uploaded_by=uploaded_by,
         )
         self.db.add(doc)
         await self.db.flush()

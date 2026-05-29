@@ -7,7 +7,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Form, Query, UploadFile, File
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.dependencies import get_db
+from app.dependencies import get_db, get_current_user
 from app.services.document_service import DocumentService
 from app.core.logging import get_logger
 from app.schemas.document import DocumentRead, DocumentUploadResponse, DocumentListResponse
@@ -41,6 +41,7 @@ async def upload_document(
         bool,
         Query(description="Re-parse an already-uploaded file (same checksum)"),
     ] = False,
+    current_user: Annotated[str, Depends(get_current_user)] = "system",
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -59,6 +60,7 @@ async def upload_document(
         file=file,
         pdf_password=pdf_password,
         allow_reprocess=allow_reprocess,
+        uploaded_by=current_user,
     )
     return result
 

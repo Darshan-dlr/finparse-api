@@ -224,3 +224,37 @@ async def test_upload_and_retrieve_pdf_invoice(
         assert job_response.status_code == 200
         job_data = job_response.json()
         assert job_data["status"] == "completed"
+
+
+@pytest.mark.asyncio
+async def test_upload_with_auth_placeholder(
+    async_client: AsyncClient, db_session: AsyncSession, standard_csv_bytes: bytes
+):
+    """Test document upload API key authentication placeholder behaviors."""
+    files = {"file": ("auth_test.csv", standard_csv_bytes, "text/csv")}
+    
+    # 1. Invalid API Key -> 401
+    headers_invalid = {"X-API-Key": "invalid"}
+    resp_invalid = await async_client.post(
+        "/api/v1/documents/upload", files=files, headers=headers_invalid
+    )
+    assert resp_invalid.status_code == 401
+    
+    # 2. Valid API Key -> 202, saved with key as uploaded_by
+    headers_valid = {"X-API-Key": "user_john_doe"}
+    # Need to change filename or bytes slightly to avoid checksum conflict
+    files_new = {"file": ("auth_test_new.csv", standard_csv_bytes + b"\n# extra line", "text/csv")}
+    resp_valid = await async_client.post(
+        "/api/v1/documents/upload", files=files_new, headers=headers_valid
+    )
+    assert resp_valid.status_code == 202
+    data = resp_valid.json()
+    doc_id = data["document_id"]
+    
+    # Verify database document row has correct uploaded_by username
+    doc_result = await db_session.execute(
+        select(Document).where(Document.id == uuid.UUID(doc_id))
+    )
+    doc_in_db = doc_result.scalar_one_or_none()
+    assert doc_in_db is not None
+    assert doc_in_db.uploaded_by == "user_john_doe"
