@@ -28,11 +28,10 @@ Upload the CSV file using Swagger UI at `http://localhost:8000/docs`.
 ```
 
 ### Response Screenshot
-![alt text](duplicate_upload.png)
-
+![Upload Document Success](images/upload_document.png)
 
 when attempting to upload the same document getting 409 error as expected
-![alt text](upload_document.png)
+![Duplicate Upload Conflict](images/duplicate_upload.png)
 ---
 
 ## 2. GET /api/v1/documents/{document_id}
@@ -58,7 +57,7 @@ Retrieve the metadata of the uploaded document using the `document_id` returned 
 ```
 
 ### Response Screenshot
-![alt text](get_document.png)
+![Get Document Metadata](images/get_document.png)
 
 ---
 
@@ -121,4 +120,4 @@ Retrieve the status and parser warnings (if any) of the processing job.
 ```
 
 ### Response Screenshot
-![alt text](get_job.png)
+![Get Job Details](images/get_job.png)

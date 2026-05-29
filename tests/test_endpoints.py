@@ -1,6 +1,11 @@
 """
 Integration tests for FastAPI endpoints.
 """
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+from app.models.bank_statement import BankStatement, BankTransaction
+from app.models.document import Document
+
 import uuid
 import pytest
 from httpx import AsyncClient
@@ -16,7 +21,7 @@ async def test_health_endpoint(async_client: AsyncClient):
 
 @pytest.mark.asyncio
 async def test_upload_and_retrieve_bank_statement(
-    async_client: AsyncClient, standard_csv_bytes: bytes
+    async_client: AsyncClient, db_session: AsyncSession, standard_csv_bytes: bytes
 ):
     """Test full upload, parsing, job retrieval, and document get flow."""
     # ── Upload ────────────────────────────────────────────────────────────────
@@ -31,6 +36,26 @@ async def test_upload_and_retrieve_bank_statement(
 
     doc_id = data["document_id"]
     job_id = data["job_id"]
+
+    # ── Verify DB Persistence ────────────────────────────────────────────────
+    # Check that bank statement metadata was successfully written
+    stmt_result = await db_session.execute(
+        select(BankStatement).where(BankStatement.document_id == uuid.UUID(doc_id))
+    )
+    statement = stmt_result.scalar_one_or_none()
+    assert statement is not None
+    assert statement.detected_delimiter == ","
+    
+    # Check that bank transactions were successfully written
+    tx_result = await db_session.execute(
+        select(BankTransaction).where(BankTransaction.bank_statement_id == statement.id)
+    )
+    transactions = tx_result.scalars().all()
+    assert len(transactions) > 0
+    # Every transaction should have amount >= 0 and a direction
+    for tx in transactions:
+        assert tx.amount >= 0
+        assert tx.direction in ("C", "D")
 
     # ── Get Document ──────────────────────────────────────────────────────────
     doc_response = await async_client.get(f"/api/v1/documents/{doc_id}")
@@ -75,6 +100,15 @@ async def test_upload_and_retrieve_bank_statement(
     # ── Delete Document (Soft Delete) ─────────────────────────────────────────
     delete_response = await async_client.delete(f"/api/v1/documents/{doc_id}")
     assert delete_response.status_code == 204
+
+    # Verify DB soft-delete flag
+    doc_result = await db_session.execute(
+        select(Document).where(Document.id == uuid.UUID(doc_id))
+    )
+    doc_in_db = doc_result.scalar_one_or_none()
+    assert doc_in_db is not None
+    assert doc_in_db.is_deleted is True
+    assert doc_in_db.deleted_at is not None
 
     # Get after delete should return 404
     get_after_delete = await async_client.get(f"/api/v1/documents/{doc_id}")
