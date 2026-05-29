@@ -299,20 +299,4 @@ ALTER TABLE bank_transactions
 CREATE INDEX idx_bank_tx_fts ON bank_transactions USING GIN(description_tsv);
 ```
 
----
 
-### `document_tags` — Flexible Key-Value Metadata
-
-```sql
-CREATE TABLE document_tags (
-    id          UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
-    document_id UUID         NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
-    key         VARCHAR(100) NOT NULL,
-    value       TEXT         NOT NULL,
-    created_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
-
-    CONSTRAINT uq_document_tag UNIQUE (document_id, key)
-);
-
-CREATE INDEX idx_document_tags_document_id ON document_tags(document_id);
-```

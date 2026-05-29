@@ -3,7 +3,6 @@ ProcessingJob model — async parsing lifecycle tracker.
 One per upload (or more if allow_reprocess=true).
 """
 import uuid
-import enum
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
@@ -16,19 +15,12 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, UUIDPrimaryKeyMixin
 from app.models.custom_types import IntegerArray
+from app.models.enums import JobStatus
 
 if TYPE_CHECKING:
     from app.models.document import Document
     from app.models.bank_statement import BankStatement
     from app.models.invoice import Invoice
-
-
-class JobStatus(str, enum.Enum):
-    PENDING = "pending"         # Uploaded, worker hasn't picked it up yet
-    PROCESSING = "processing"   # Worker is actively parsing
-    COMPLETED = "completed"     # Fully parsed, all fields extracted
-    FAILED = "failed"           # Parsing failed entirely
-    PARTIAL = "partial"         # Parsed with warnings (missing fields, guessed values)
 
 
 class ProcessingJob(UUIDPrimaryKeyMixin, Base):

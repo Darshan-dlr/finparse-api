@@ -172,7 +172,7 @@ async def test_upload_and_retrieve_pdf_invoice(
     from unittest.mock import AsyncMock
     with patch("app.services.document_service.FileValidator.validate", new_callable=AsyncMock) as mock_validate:
         mock_validate.return_value = validated_mock
-        with patch("app.services.document_service.PDFParser.parse", return_value=mock_parsed_invoice):
+        with patch("app.parsers.pdf_parser.PDFParser.parse", return_value=mock_parsed_invoice):
             response = await async_client.post("/api/v1/documents/upload", files=files)
             assert response.status_code == 202
         

@@ -104,7 +104,6 @@ documents (1) ──────────────── (N) processing_jo
     ├── (1) bank_statements
     │         └── (N) bank_transactions
     │
-    └── (N) document_tags
 ```
 
 ### Key Design Decisions
@@ -379,7 +378,6 @@ finparse-api/
 │   │   ├── document.py
 │   │   ├── processing_job.py
 │   │   ├── bank_statement.py      # BankStatement + BankTransaction
-│   │   └── document_tag.py
 │   ├── parsers/
 │   │   └── csv_parser.py          # 5-stage CSV pipeline (main focus)
 │   ├── utils/

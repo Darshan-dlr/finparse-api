@@ -17,8 +17,8 @@ from app.models.bank_statement import BankStatement, BankTransaction
 from app.models.document import Document, DocumentType
 from app.models.processing_job import JobStatus, ProcessingJob
 from app.models.invoice import Invoice, InvoiceLineItem, Vendor
-from app.parsers.csv_parser import CSVParser, ParsedBankStatement, ParsedTransaction
-from app.parsers.pdf_parser import PDFParser, ParsedInvoice, ParsedInvoiceLineItem
+from app.parsers.factory import ParserFactory
+from app.parsers.schemas import ParsedBankStatement, ParsedTransaction, ParsedInvoice, ParsedInvoiceLineItem
 from app.validators.file_validator import FileValidator, ValidatedFile
 
 logger = get_logger(__name__)
@@ -71,10 +71,7 @@ class DocumentService:
         job = await self._create_job(document, validated, is_reprocess)
 
         # ── Parse immediately (sync for now; move to Celery for prod) ─────────
-        if validated.file_extension == ".csv":
-            await self._parse_csv(job, document, validated)
-        elif validated.file_extension == ".pdf":
-            await self._parse_pdf(job, document, validated)
+        await self._parse_document(job, document, validated)
 
         await self.db.flush()
 
@@ -94,194 +91,190 @@ class DocumentService:
     # CSV Parsing
     # ══════════════════════════════════════════════════════════════════════════
 
-    async def _parse_csv(
+    async def _parse_document(
         self,
         job: ProcessingJob,
         document: Document,
         validated: ValidatedFile,
     ) -> None:
-        """Run CSV parser and persist results. Updates job status."""
+        """Run parser polymorphically and persist results. Updates job status."""
         job.status = JobStatus.PROCESSING
         job.started_at = datetime.now(timezone.utc)
 
         try:
-            parser = CSVParser(max_rows=settings.max_csv_rows)
-            result: ParsedBankStatement = parser.parse(validated.content)
-
-            # ── Persist BankStatement ─────────────────────────────────────────
-            statement = BankStatement(
-                document_id=document.id,
-                processing_job_id=job.id,
-                bank_name=result.bank_name,
-                account_number=result.account_number,
-                account_holder=result.account_holder,
-                currency=result.currency,
-                statement_from=result.statement_from,
-                statement_to=result.statement_to,
-                opening_balance=result.opening_balance,
-                closing_balance=result.closing_balance,
-                raw_headers=result.raw_headers,
-                detected_format=result.detected_format,
-                detected_delimiter=result.detected_delimiter,
-                detected_encoding=result.detected_encoding,
-                total_rows_parsed=result.total_rows_parsed,
-                total_rows_skipped=result.total_rows_skipped,
-            )
-            self.db.add(statement)
-            await self.db.flush()  # Get statement.id
-
-            # ── Persist Transactions ──────────────────────────────────────────
-            tx_objects = [
-                self._build_transaction(statement.id, tx)
-                for tx in result.transactions
-            ]
-            self.db.add_all(tx_objects)
-
-            # ── Update job ────────────────────────────────────────────────────
-            job.status = JobStatus.COMPLETED if not result.warnings else JobStatus.PARTIAL
-            job.completed_at = datetime.now(timezone.utc)
-            job.parser_version = result.parser_version
-            job.warnings = result.warnings or None
-
-            logger.info(
-                "CSV parse completed",
-                job_id=str(job.id),
-                transactions=result.total_rows_parsed,
-                warnings=len(result.warnings),
-                status=job.status.value,
-            )
-
-        except FinParseException as e:
-            job.status = JobStatus.FAILED
-            job.completed_at = datetime.now(timezone.utc)
-            job.error_message = e.message
-            job.error_detail = {"error_code": e.error_code, **e.detail}
-            logger.warning("CSV parse failed (known error)", error_code=e.error_code, message=e.message)
-
-        except Exception as e:
-            job.status = JobStatus.FAILED
-            job.completed_at = datetime.now(timezone.utc)
-            job.error_message = str(e)
-            job.error_detail = {"stage": "csv_parsing", "error": str(e)}
-            logger.exception("CSV parse failed (unexpected)", error=str(e))
-
-    # ══════════════════════════════════════════════════════════════════════════
-    # PDF Parsing
-    # ══════════════════════════════════════════════════════════════════════════
-
-    async def _parse_pdf(
-        self,
-        job: ProcessingJob,
-        document: Document,
-        validated: ValidatedFile,
-    ) -> None:
-        """Run PDF parser and persist results. Updates job status."""
-        job.status = JobStatus.PROCESSING
-        job.started_at = datetime.now(timezone.utc)
-
-        try:
-            # ── Check if OCR needed ───────────────────────────────────────────
-            if validated.ocr_needed:
+            if validated.file_extension == ".pdf" and validated.ocr_needed:
                 raise OCRFailedError(
                     "OCR is required for this scanned PDF but OCR is not configured/implemented."
                 )
 
-            parser = PDFParser()
-            result: ParsedInvoice = parser.parse(validated.content)
+            # Resolve parser dynamically via factory
+            parser = ParserFactory.get_parser(validated.file_extension)
+            result = parser.parse(validated.content)
 
-            # ── Deduplicate / Find or Create Vendor ───────────────────────────
-            vendor_id = None
-            if result.raw_vendor_name:
-                vendor_canonical = result.raw_vendor_name.strip()
-                # Find vendor case-insensitively
-                stmt_vendor = select(Vendor).where(
-                    func.lower(Vendor.canonical_name) == func.lower(vendor_canonical)
-                )
-                vendor_result = await self.db.execute(stmt_vendor)
-                vendor = vendor_result.scalar_one_or_none()
-
-                if not vendor:
-                    vendor = Vendor(
-                        canonical_name=vendor_canonical,
-                        raw_names=[vendor_canonical],
-                    )
-                    self.db.add(vendor)
-                    await self.db.flush()  # get vendor.id
-                
-                vendor_id = vendor.id
-
-            # ── Persist Invoice ───────────────────────────────────────────────
-            invoice = Invoice(
-                document_id=document.id,
-                processing_job_id=job.id,
-                vendor_id=vendor_id,
-                invoice_number=result.invoice_number,
-                invoice_date=result.invoice_date,
-                due_date=result.due_date,
-                currency=result.currency,
-                subtotal=result.subtotal,
-                tax_amount=result.tax_amount,
-                discount_amount=result.discount_amount,
-                total_amount=result.total_amount,
-                raw_vendor_name=result.raw_vendor_name,
-                raw_date_text=result.raw_date_text,
-                raw_total_text=result.raw_total_text,
-                confidence=result.confidence,
-                notes=result.notes,
-                page_range_start=1,
-                page_range_end=validated.pdf_page_count or 1,
-                invoice_index=0,
-            )
-            self.db.add(invoice)
-            await self.db.flush()  # get invoice.id
-
-            # ── Persist Line Items ────────────────────────────────────────────
-            line_objects = []
-            for item in result.line_items:
-                line_obj = InvoiceLineItem(
-                    invoice_id=invoice.id,
-                    line_number=item.line_number,
-                    description=item.description,
-                    quantity=item.quantity,
-                    unit_price=item.unit_price,
-                    line_total=item.line_total,
-                    tax_rate=item.tax_rate,
-                    tax_amount=item.tax_amount,
-                    sku=item.sku,
-                    unit_of_measure=item.unit_of_measure,
-                )
-                line_objects.append(line_obj)
-
-            if line_objects:
-                self.db.add_all(line_objects)
-
-            # ── Update job ────────────────────────────────────────────────────
-            job.status = JobStatus.COMPLETED if not result.warnings else JobStatus.PARTIAL
-            job.completed_at = datetime.now(timezone.utc)
-            job.parser_version = result.parser_version
-            job.warnings = [{"warning": w} for w in result.warnings] if result.warnings else None
-
-            logger.info(
-                "PDF invoice parse completed",
-                job_id=str(job.id),
-                line_items=len(result.line_items),
-                warnings=len(result.warnings),
-                status=job.status.value,
-            )
+            # Split persistence logic based on document format
+            if validated.file_extension == ".csv":
+                await self._persist_csv_data(job, document, result)
+            elif validated.file_extension == ".pdf":
+                await self._persist_pdf_data(job, document, result, validated.pdf_page_count)
 
         except FinParseException as e:
             job.status = JobStatus.FAILED
             job.completed_at = datetime.now(timezone.utc)
             job.error_message = e.message
             job.error_detail = {"error_code": e.error_code, **e.detail}
-            logger.warning("PDF parse failed (known error)", error_code=e.error_code, message=e.message)
+            logger.warning(
+                f"{validated.file_extension.upper().strip('.')} parse failed (known error)",
+                error_code=e.error_code,
+                message=e.message,
+            )
 
         except Exception as e:
             job.status = JobStatus.FAILED
             job.completed_at = datetime.now(timezone.utc)
             job.error_message = str(e)
-            job.error_detail = {"stage": "pdf_parsing", "error": str(e)}
-            logger.exception("PDF parse failed (unexpected)", error=str(e))
+            job.error_detail = {"stage": f"{validated.file_extension.lstrip('.')}_parsing", "error": str(e)}
+            logger.exception(
+                f"{validated.file_extension.upper().strip('.')} parse failed (unexpected)",
+                error=str(e),
+            )
+
+    async def _persist_csv_data(
+        self,
+        job: ProcessingJob,
+        document: Document,
+        result: ParsedBankStatement,
+    ) -> None:
+        """Persist bank statement transactions to database."""
+        # ── Persist BankStatement ─────────────────────────────────────────
+        statement = BankStatement(
+            document_id=document.id,
+            processing_job_id=job.id,
+            bank_name=result.bank_name,
+            account_number=result.account_number,
+            account_holder=result.account_holder,
+            currency=result.currency,
+            statement_from=result.statement_from,
+            statement_to=result.statement_to,
+            opening_balance=result.opening_balance,
+            closing_balance=result.closing_balance,
+            raw_headers=result.raw_headers,
+            detected_format=result.detected_format,
+            detected_delimiter=result.detected_delimiter,
+            detected_encoding=result.detected_encoding,
+            total_rows_parsed=result.total_rows_parsed,
+            total_rows_skipped=result.total_rows_skipped,
+        )
+        self.db.add(statement)
+        await self.db.flush()  # Get statement.id
+
+        # ── Persist Transactions ──────────────────────────────────────────
+        tx_objects = [
+            self._build_transaction(statement.id, tx)
+            for tx in result.transactions
+        ]
+        self.db.add_all(tx_objects)
+
+        # ── Update job ────────────────────────────────────────────────────
+        job.status = JobStatus.COMPLETED if not result.warnings else JobStatus.PARTIAL
+        job.completed_at = datetime.now(timezone.utc)
+        job.parser_version = result.parser_version
+        job.warnings = result.warnings or None
+
+        logger.info(
+            "CSV parse completed",
+            job_id=str(job.id),
+            transactions=result.total_rows_parsed,
+            warnings=len(result.warnings),
+            status=job.status.value,
+        )
+
+    async def _persist_pdf_data(
+        self,
+        job: ProcessingJob,
+        document: Document,
+        result: ParsedInvoice,
+        pdf_page_count: int | None,
+    ) -> None:
+        """Persist invoice line items to database."""
+        # ── Deduplicate / Find or Create Vendor ───────────────────────────
+        vendor_id = None
+        if result.raw_vendor_name:
+            vendor_canonical = result.raw_vendor_name.strip()
+            # Find vendor case-insensitively
+            stmt_vendor = select(Vendor).where(
+                func.lower(Vendor.canonical_name) == func.lower(vendor_canonical)
+            )
+            vendor_result = await self.db.execute(stmt_vendor)
+            vendor = vendor_result.scalar_one_or_none()
+
+            if not vendor:
+                vendor = Vendor(
+                    canonical_name=vendor_canonical,
+                    raw_names=[vendor_canonical],
+                )
+                self.db.add(vendor)
+                await self.db.flush()  # get vendor.id
+            
+            vendor_id = vendor.id
+
+        # ── Persist Invoice ───────────────────────────────────────────────
+        invoice = Invoice(
+            document_id=document.id,
+            processing_job_id=job.id,
+            vendor_id=vendor_id,
+            invoice_number=result.invoice_number,
+            invoice_date=result.invoice_date,
+            due_date=result.due_date,
+            currency=result.currency,
+            subtotal=result.subtotal,
+            tax_amount=result.tax_amount,
+            discount_amount=result.discount_amount,
+            total_amount=result.total_amount,
+            raw_vendor_name=result.raw_vendor_name,
+            raw_date_text=result.raw_date_text,
+            raw_total_text=result.raw_total_text,
+            confidence=result.confidence,
+            notes=result.notes,
+            page_range_start=1,
+            page_range_end=pdf_page_count or 1,
+            invoice_index=0,
+        )
+        self.db.add(invoice)
+        await self.db.flush()  # get invoice.id
+
+        # ── Persist Line Items ────────────────────────────────────────────
+        line_objects = []
+        for item in result.line_items:
+            line_obj = InvoiceLineItem(
+                invoice_id=invoice.id,
+                line_number=item.line_number,
+                description=item.description,
+                quantity=item.quantity,
+                unit_price=item.unit_price,
+                line_total=item.line_total,
+                tax_rate=item.tax_rate,
+                tax_amount=item.tax_amount,
+                sku=item.sku,
+                unit_of_measure=item.unit_of_measure,
+            )
+            line_objects.append(line_obj)
+
+        if line_objects:
+            self.db.add_all(line_objects)
+
+        # ── Update job ────────────────────────────────────────────────────
+        job.status = JobStatus.COMPLETED if not result.warnings else JobStatus.PARTIAL
+        job.completed_at = datetime.now(timezone.utc)
+        job.parser_version = result.parser_version
+        job.warnings = [{"warning": w} for w in result.warnings] if result.warnings else None
+
+        logger.info(
+            "PDF invoice parse completed",
+            job_id=str(job.id),
+            line_items=len(result.line_items),
+            warnings=len(result.warnings),
+            status=job.status.value,
+        )
 
     def _build_transaction(
         self, statement_id: uuid.UUID, tx: ParsedTransaction
