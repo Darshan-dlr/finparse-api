@@ -14,7 +14,15 @@ extensions = [
     'sphinx.ext.viewcode',
     'sphinx.ext.napoleon',        # support google & numpy style docstrings
     'sphinx.ext.githubpages',
+    'myst_parser',
+    'sphinxcontrib.mermaid',
 ]
+
+# Support for both .rst and .md files
+source_suffix = {
+    '.rst': 'restructuredtext',
+    '.md': 'markdown',
+}
 
 templates_path = ['_templates']
 exclude_patterns = ['build', 'Thumbs.db', '.DS_Store']

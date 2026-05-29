@@ -41,7 +41,7 @@ jobs:
         # python-magic-bin is for Windows; filter it out on Linux and install python-magic instead
         grep -v "python-magic-bin" requirements.txt > requirements_ci.txt
         pip install -r requirements_ci.txt
-        pip install python-magic reportlab sphinx furo
+        pip install python-magic reportlab sphinx furo myst-parser sphinxcontrib-mermaid
 
     - name: Run Database Migrations
       run: |

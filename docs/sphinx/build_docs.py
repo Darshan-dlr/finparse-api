@@ -11,13 +11,18 @@ def main():
     print("═══════════════════════════════════════════════════════════════════════")
 
     # 1. Check/Install dependencies
-    print("Checking Sphinx and Furo theme dependencies...")
+    print("Checking Sphinx, Furo theme, myst-parser, and mermaid dependencies...")
     try:
         import sphinx
         import furo
+        import myst_parser
+        import sphinxcontrib.mermaid
     except ImportError:
-        print("Sphinx or Furo theme not found. Installing via pip...")
-        subprocess.check_call([sys.executable, "-m", "pip", "install", "sphinx", "furo"])
+        print("Missing Sphinx dependencies. Installing via pip...")
+        subprocess.check_call([
+            sys.executable, "-m", "pip", 
+            "install", "sphinx", "furo", "myst-parser", "sphinxcontrib-mermaid"
+        ])
 
     docs_dir = os.path.dirname(os.path.abspath(__file__))
     project_root = os.path.abspath(os.path.join(docs_dir, "../../"))
