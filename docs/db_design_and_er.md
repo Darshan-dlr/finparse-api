@@ -48,8 +48,6 @@ The database is built around **8 core tables** designed to handle raw files, par
 * **Sign Safety**: `amount` is strictly positive (`CHECK (amount >= 0)`) with an explicit `direction` column (`C` = Credit, `D` = Debit).
 * **Transaction Types**: Enum values range from `credit`, `debit`, `transfer`, `fee`, `interest`, to `unknown` based on transaction description patterns.
 
-### 8. `document_tags` (Ad-hoc Key-Value Metadata)
-* **Purpose**: Allows attaching flexible tags (like department codes or client IDs) to documents without schema migrations.
 
 ---
 
@@ -174,19 +172,11 @@ erDiagram
         TIMESTAMPTZ created_at
     }
 
-    document_tags {
-        UUID id PK
-        UUID document_id FK
-        VARCHAR key
-        TEXT value
-        TIMESTAMPTZ created_at
-    }
-
     %% Relationships
     documents       ||--o{ processing_jobs    : "triggers"
     documents       ||--o| invoices           : "parsed into"
     documents       ||--o| bank_statements    : "parsed into"
-    documents       ||--o{ document_tags      : "tagged with"
+
 
     processing_jobs ||--o| invoices           : "produced by"
     processing_jobs ||--o| bank_statements    : "produced by"

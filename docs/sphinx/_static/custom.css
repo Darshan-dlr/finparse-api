@@ -1,0 +1,42 @@
+/* Import modern typography from Google Fonts */
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+/* Typography variables overrides */
+:root {
+    --font-stack: 'Outfit', sans-serif !important;
+    --font-stack--monospace: 'JetBrains Mono', monospace !important;
+}
+
+/* Sidebar styling: subtle glassmorphism effect in dark mode */
+.sidebar-drawer {
+    backdrop-filter: blur(10px);
+    background-color: rgba(15, 23, 42, 0.8) !important;
+    border-right: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+/* Brand header styling with beautiful gradients */
+.sidebar-brand-text {
+    font-weight: 700 !important;
+    letter-spacing: 0.03em !important;
+    background: linear-gradient(135deg, #a5b4fc 0%, #818cf8 50%, #34d399 100%) !important;
+    -webkit-background-clip: text !important;
+    -webkit-text-fill-color: transparent !important;
+    display: inline-block;
+}
+
+/* Enhancing code block containers with rounded corners and border styling */
+.highlight {
+    border-radius: 8px !important;
+    border: 1px solid rgba(255, 255, 255, 0.05) !important;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+}
+
+/* Link animations for enhanced UX micro-interactions */
+a {
+    transition: color 0.2s ease-in-out, text-decoration 0.2s ease-in-out !important;
+}
+
+a:hover {
+    color: #818cf8 !important;
+    text-decoration: underline !important;
+}

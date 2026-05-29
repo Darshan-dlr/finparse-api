@@ -2,28 +2,20 @@
 Document model — immutable raw file registry.
 Every upload creates one row here. Never deleted (soft delete only).
 """
-import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
-import enum
 
 from sqlalchemy import (
     BigInteger, Boolean, CheckConstraint, DateTime,
     Enum as SAEnum, String, Text, func,
 )
-from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
+from app.models.enums import DocumentType
 
 if TYPE_CHECKING:
     from app.models.processing_job import ProcessingJob
-    from app.models.document_tag import DocumentTag
-
-
-class DocumentType(str, enum.Enum):
-    INVOICE = "invoice"
-    BANK_STATEMENT = "bank_statement"
 
 
 class Document(UUIDPrimaryKeyMixin, TimestampMixin, Base):
@@ -60,9 +52,6 @@ class Document(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     # ── Relationships ──────────────────────────────────────────────────────────
     processing_jobs: Mapped[list["ProcessingJob"]] = relationship(
         "ProcessingJob", back_populates="document", cascade="all, delete-orphan"
-    )
-    tags: Mapped[list["DocumentTag"]] = relationship(
-        "DocumentTag", back_populates="document", cascade="all, delete-orphan"
     )
 
     def __repr__(self) -> str:

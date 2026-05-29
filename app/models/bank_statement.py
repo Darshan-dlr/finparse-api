@@ -2,7 +2,6 @@
 BankStatement and BankTransaction ORM models.
 """
 import uuid
-import enum
 from datetime import date, datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING, Any
@@ -15,19 +14,11 @@ from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, UUIDPrimaryKeyMixin
+from app.models.enums import TransactionType
 
 if TYPE_CHECKING:
     from app.models.document import Document
     from app.models.processing_job import ProcessingJob
-
-
-class TransactionType(str, enum.Enum):
-    CREDIT = "credit"
-    DEBIT = "debit"
-    TRANSFER = "transfer"
-    FEE = "fee"
-    INTEREST = "interest"
-    UNKNOWN = "unknown"
 
 
 class BankStatement(UUIDPrimaryKeyMixin, Base):

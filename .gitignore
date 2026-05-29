@@ -54,6 +54,7 @@ uploads/
 *.pdf
 *.csv
 !tests/sample_files/*.csv
+!tests/sample_files/*.pdf
 
 # Database
 *.db

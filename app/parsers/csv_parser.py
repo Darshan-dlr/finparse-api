@@ -18,8 +18,6 @@ Design principles:
 import csv
 import io
 import re
-from dataclasses import dataclass, field
-from datetime import date
 from decimal import Decimal
 
 import chardet
@@ -33,96 +31,17 @@ from app.core.exceptions import (
 from app.core.logging import get_logger
 from app.utils.amount_parser import ParsedAmount, parse_amount, parse_split_amounts
 from app.utils.date_parser import ParsedDate, infer_date_format_hint, parse_date
-from app.models.bank_statement import TransactionType
-
-logger = get_logger(__name__)
-
-# ── Parser version — bump when logic changes for audit trail ─────────────────
-PARSER_VERSION = "csv-parser-v1.0.0"
-
-# ── Minimum rows to consider a file valid ────────────────────────────────────
-MIN_DATA_ROWS = 1
-
-# ── Row skip patterns (summary / metadata rows) ───────────────────────────────
-SKIP_ROW_PATTERNS = re.compile(
-    r"^\s*(total|balance|closing|opening|subtotal|grand\s+total|net\s+total"
-    r"|brought\s+forward|carried\s+forward|statement\s+summary|page\s+\d+)\b",
-    re.IGNORECASE,
+from app.models.enums import TransactionType
+from app.parsers.base import BaseParser
+from app.parsers.schemas import ParsedTransaction, ColumnMapping, ParsedBankStatement
+from app.parsers.constants import (
+    CSV_PARSER_VERSION as PARSER_VERSION,
+    CSV_MIN_DATA_ROWS as MIN_DATA_ROWS,
+    CSV_SKIP_ROW_PATTERNS as SKIP_ROW_PATTERNS,
+    CSV_TYPE_KEYWORD_MAP as TYPE_KEYWORD_MAP,
 )
 
-# ── Transaction type inference from description keywords ─────────────────────
-TYPE_KEYWORD_MAP: list[tuple[re.Pattern, TransactionType]] = [
-    (re.compile(r"\b(transfer|trf|trsf|neft|rtgs|imps|upi)\b", re.I), TransactionType.TRANSFER),
-    (re.compile(r"\b(fee|charge|penalty|fine|commission)\b", re.I), TransactionType.FEE),
-    (re.compile(r"\b(interest|int earned|int paid)\b", re.I), TransactionType.INTEREST),
-    (re.compile(r"\b(atm|cash withdrawal|cash deposit)\b", re.I), TransactionType.DEBIT),
-    (re.compile(r"\b(salary|payroll|stipend)\b", re.I), TransactionType.CREDIT),
-]
-
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# Data classes for pipeline results
-# ═══════════════════════════════════════════════════════════════════════════════
-
-@dataclass
-class ParsedTransaction:
-    """One fully-parsed transaction row."""
-    row_index: int
-    transaction_date: date
-    value_date: date | None
-    description: str | None
-    raw_description: str | None
-    reference_number: str | None
-    transaction_type: TransactionType
-    amount: Decimal
-    direction: str          # 'C' | 'D'
-    balance_after: Decimal | None
-    currency: str | None
-    parse_warnings: list[str] = field(default_factory=list)
-
-
-@dataclass
-class ColumnMapping:
-    """Maps logical field names to actual CSV column indices."""
-    date: int | None = None
-    value_date: int | None = None
-    description: int | None = None
-    reference: int | None = None
-    amount: int | None = None          # Single signed/unsigned amount column
-    debit: int | None = None           # Separate debit column
-    credit: int | None = None          # Separate credit column
-    balance: int | None = None
-    currency: int | None = None
-    transaction_type: int | None = None
-
-
-@dataclass
-class ParsedBankStatement:
-    """Final result from the full CSV parsing pipeline."""
-    bank_name: str | None
-    account_number: str | None          # MASKED
-    account_holder: str | None
-    currency: str | None
-    statement_from: date | None
-    statement_to: date | None
-    opening_balance: Decimal | None
-    closing_balance: Decimal | None
-    transactions: list[ParsedTransaction]
-
-    # CSV format metadata
-    detected_encoding: str
-    detected_delimiter: str
-    detected_format: str
-    raw_headers: dict                   # {column_index: header_name}
-    column_mapping: ColumnMapping
-
-    # Quality metrics
-    total_rows_parsed: int
-    total_rows_skipped: int
-    parser_version: str = PARSER_VERSION
-
-    # Aggregated warnings
-    warnings: list[dict] = field(default_factory=list)
+logger = get_logger(__name__)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -724,7 +643,7 @@ class PostProcessor:
 # Main Orchestrator
 # ═══════════════════════════════════════════════════════════════════════════════
 
-class CSVParser:
+class CSVParser(BaseParser[ParsedBankStatement]):
     """
     Orchestrates the 5-stage CSV parsing pipeline.
     Entry point for all CSV bank statement parsing.

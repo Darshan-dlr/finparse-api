@@ -14,7 +14,6 @@ Design principles:
 """
 import io
 import re
-from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal
 import pdfplumber
@@ -22,114 +21,30 @@ import pdfplumber
 from app.core.logging import get_logger
 from app.utils.amount_parser import parse_amount
 from app.utils.date_parser import parse_date
+from app.parsers.base import BaseParser
+from app.parsers.schemas import ParsedInvoiceLineItem, ParsedInvoice
+from app.parsers.constants import (
+    PDF_PARSER_VERSION as PARSER_VERSION,
+    PDF_INV_NUM_PATTERNS as INV_NUM_PATTERNS,
+    PDF_INV_DATE_PATTERNS as INV_DATE_PATTERNS,
+    PDF_DUE_DATE_PATTERNS as DUE_DATE_PATTERNS,
+    PDF_SUBTOTAL_PATTERNS as SUBTOTAL_PATTERNS,
+    PDF_TAX_PATTERNS as TAX_PATTERNS,
+    PDF_DISCOUNT_PATTERNS as DISCOUNT_PATTERNS,
+    PDF_TOTAL_PATTERNS as TOTAL_PATTERNS,
+    PDF_VENDOR_PATTERNS as VENDOR_PATTERNS,
+    PDF_CURRENCY_MAP as CURRENCY_MAP,
+    PDF_HEADER_MAPS as HEADER_MAPS,
+)
 
 logger = get_logger(__name__)
-
-PARSER_VERSION = "pdf-parser-v1.0.0"
-
-# ── Extraction Patterns ───────────────────────────────────────────────────────
-
-INV_NUM_PATTERNS = [
-    re.compile(r"(?:invoice[ \t]*number|invoice[ \t]*no\.?|invoice[ \t]*#|inv[ \t]*no\.?|inv[ \t]*#|bill[ \t]*no\.?|invoice[ \t]*id)[ \t]*[:#-]?[ \t]*([A-Za-z0-9\-_]+)", re.IGNORECASE),
-    re.compile(r"inv-?([A-Za-z0-9\-_]+)", re.IGNORECASE),
-]
-
-INV_DATE_PATTERNS = [
-    re.compile(r"(?:invoice[ \t]*date|issue[ \t]*date|billing[ \t]*date|date[ \t]*of[ \t]*issue|date)[ \t]*[:\-]?[ \t]*([^\n\r]+)", re.IGNORECASE)
-]
-
-DUE_DATE_PATTERNS = [
-    re.compile(r"(?:due[ \t]*date|payment[ \t]*due|due[ \t]*by|pay[ \t]*by|expiry[ \t]*date)[ \t]*[:\-]?[ \t]*([^\n\r]+)", re.IGNORECASE)
-]
-
-SUBTOTAL_PATTERNS = [
-    re.compile(r"\b(?:subtotal|sub-total|net[ \t]*amount|net[ \t]*total)\b[ \t]*[:\-]?[ \t]*([^\n\r]+)", re.IGNORECASE)
-]
-
-TAX_PATTERNS = [
-    re.compile(r"\b(?:tax|vat|gst|sales[ \t]*tax|tax[ \t]*amount|vat[ \t]*amount)\b[ \t]*[:\-]?[ \t]*([^\n\r]+)", re.IGNORECASE)
-]
-
-DISCOUNT_PATTERNS = [
-    re.compile(r"\b(?:discount|rebate|promo|discount[ \t]*amount)\b[ \t]*[:\-]?[ \t]*([^\n\r]+)", re.IGNORECASE)
-]
-
-TOTAL_PATTERNS = [
-    re.compile(r"\b(?:total|amount[ \t]*due|total[ \t]*due|grand[ \t]*total|balance[ \t]*due|invoice[ \t]*total)\b[ \t]*[:\-]?[ \t]*([^\n\r]+)", re.IGNORECASE)
-]
-
-VENDOR_PATTERNS = [
-    re.compile(r"(?:vendor|seller|billed[ \t]*from|service[ \t]*provider)[ \t]*[:\-]?[ \t]*([^\n\r]+)", re.IGNORECASE),
-    re.compile(r"(?:from)[ \t]*[:\-][ \t]*([^\n\r]+)", re.IGNORECASE),
-]
-
-CURRENCY_MAP = {
-    "$": "USD",
-    "€": "EUR",
-    "£": "GBP",
-    "₹": "INR",
-    "¥": "JPY",
-    "USD": "USD",
-    "EUR": "EUR",
-    "GBP": "GBP",
-    "INR": "INR",
-    "JPY": "JPY",
-}
-
-# Column keywords for table column detection
-HEADER_MAPS = {
-    "description": ["description", "item", "details", "desc", "particulars", "product", "service", "name"],
-    "quantity": ["qty", "quantity", "qty.", "units", "count", "qnty"],
-    "unit_price": ["unit price", "price", "unit_price", "rate", "cost", "unit cost", "price/unit"],
-    "line_total": ["total", "amount", "line total", "total amount", "subtotal", "value"],
-    "sku": ["sku", "item code", "code", "part no", "part number", "id", "sku/code"],
-    "unit_of_measure": ["unit", "uom", "measure"],
-    "tax_amount": ["tax", "vat", "gst", "tax amount", "tax_amount"],
-    "tax_rate": ["tax rate", "tax %", "vat %", "gst %", "tax_rate"]
-}
-
-# ═══════════════════════════════════════════════════════════════════════════════
-# Data Classes
-# ═══════════════════════════════════════════════════════════════════════════════
-
-@dataclass
-class ParsedInvoiceLineItem:
-    line_number: int
-    description: str | None = None
-    quantity: Decimal | None = None
-    unit_price: Decimal | None = None
-    line_total: Decimal | None = None
-    tax_rate: Decimal | None = None
-    tax_amount: Decimal | None = None
-    sku: str | None = None
-    unit_of_measure: str | None = None
-
-
-@dataclass
-class ParsedInvoice:
-    invoice_number: str | None = None
-    invoice_date: date | None = None
-    due_date: date | None = None
-    currency: str | None = None
-    subtotal: Decimal | None = None
-    tax_amount: Decimal | None = None
-    discount_amount: Decimal | None = None
-    total_amount: Decimal | None = None
-    raw_vendor_name: str | None = None
-    raw_date_text: str | None = None
-    raw_total_text: str | None = None
-    confidence: Decimal = Decimal("1.000")
-    notes: str | None = None
-    line_items: list[ParsedInvoiceLineItem] = field(default_factory=list)
-    warnings: list[str] = field(default_factory=list)
-    parser_version: str = PARSER_VERSION
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # PDF Parser
 # ═══════════════════════════════════════════════════════════════════════════════
 
-class PDFParser:
+class PDFParser(BaseParser[ParsedInvoice]):
     """
     Parses PDF invoices using pdfplumber to extract text and tables.
     Applies heuristic rules to construct a ParsedInvoice.

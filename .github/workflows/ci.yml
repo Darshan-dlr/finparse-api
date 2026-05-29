@@ -1,0 +1,84 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, refactor ]
+  pull_request:
+    branches: [ main, refactor ]
+
+# Grant permissions required for deploying to GitHub Pages natively
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Concurrency group for pages deployments
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python 3.12
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+        cache: 'pip'
+
+    - name: Install System Dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libmagic1
+
+    - name: Clean OS-Specific Dependencies and Install
+      run: |
+        python -m pip install --upgrade pip
+        # python-magic-bin is for Windows; filter it out on Linux and install python-magic instead
+        grep -v "python-magic-bin" requirements.txt > requirements_ci.txt
+        pip install -r requirements_ci.txt
+        pip install python-magic reportlab sphinx furo myst-parser sphinxcontrib-mermaid
+
+    - name: Run Database Migrations
+      run: |
+        alembic upgrade head
+      env:
+        ENVIRONMENT: testing
+        DATABASE_URL: sqlite+aiosqlite:///finparse_test.db
+        DATABASE_URL_SYNC: sqlite:///finparse_test.db
+        STORAGE_PATH: ./uploads_test
+
+    - name: Run Tests with Pytest
+      run: |
+        pytest
+      env:
+        ENVIRONMENT: testing
+        DATABASE_URL: sqlite+aiosqlite:///finparse_test.db
+        DATABASE_URL_SYNC: sqlite:///finparse_test.db
+        STORAGE_PATH: ./uploads_test
+
+    - name: Build Sphinx Documentation
+      run: |
+        python docs/sphinx/build_docs.py
+
+    - name: Upload Pages Artifact
+      uses: actions/upload-pages-artifact@v3
+      with:
+        path: docs/sphinx/build
+
+  deploy-docs:
+    needs: test
+    # Only deploy on direct push events to refactor or main branches
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/refactor')
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
