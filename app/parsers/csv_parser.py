@@ -18,7 +18,6 @@ Design principles:
 import csv
 import io
 import re
-from datetime import date
 from decimal import Decimal
 
 import chardet

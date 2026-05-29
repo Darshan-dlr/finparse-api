@@ -1,7 +1,6 @@
 """
 DocumentService — orchestrates upload, validation, parsing, and persistence.
 """
-import os
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -18,7 +17,7 @@ from app.models.document import Document, DocumentType
 from app.models.processing_job import JobStatus, ProcessingJob
 from app.models.invoice import Invoice, InvoiceLineItem, Vendor
 from app.parsers.factory import ParserFactory
-from app.parsers.schemas import ParsedBankStatement, ParsedTransaction, ParsedInvoice, ParsedInvoiceLineItem
+from app.parsers.schemas import ParsedBankStatement, ParsedTransaction, ParsedInvoice
 from app.validators.file_validator import FileValidator, ValidatedFile
 
 logger = get_logger(__name__)
