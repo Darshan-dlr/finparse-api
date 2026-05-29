@@ -31,5 +31,5 @@ Module contents
 
 .. automodule:: app
    :members:
-   :show-inheritance:
    :undoc-members:
+   :show-inheritance:

@@ -14,5 +14,5 @@ Module contents
 
 .. automodule:: app.api.v1.endpoints
    :members:
-   :show-inheritance:
    :undoc-members:
+   :show-inheritance:

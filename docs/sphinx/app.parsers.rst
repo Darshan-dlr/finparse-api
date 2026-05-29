@@ -19,5 +19,5 @@ Module contents
 
 .. automodule:: app.parsers
    :members:
-   :show-inheritance:
    :undoc-members:
+   :show-inheritance:

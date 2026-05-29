@@ -14,5 +14,5 @@ Module contents
 
 .. automodule:: app.services
    :members:
-   :show-inheritance:
    :undoc-members:
+   :show-inheritance:

@@ -22,5 +22,5 @@ Module contents
 
 .. automodule:: app.api.v1
    :members:
-   :show-inheritance:
    :undoc-members:
+   :show-inheritance:
