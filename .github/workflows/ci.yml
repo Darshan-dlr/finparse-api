@@ -38,6 +38,7 @@ jobs:
       env:
         ENVIRONMENT: testing
         DATABASE_URL: sqlite+aiosqlite:///finparse_test.db
+        DATABASE_URL_SYNC: sqlite:///finparse_test.db
         STORAGE_PATH: ./uploads_test
 
     - name: Run Tests with Pytest
@@ -46,4 +47,5 @@ jobs:
       env:
         ENVIRONMENT: testing
         DATABASE_URL: sqlite+aiosqlite:///finparse_test.db
+        DATABASE_URL_SYNC: sqlite:///finparse_test.db
         STORAGE_PATH: ./uploads_test
