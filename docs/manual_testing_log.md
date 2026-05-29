@@ -28,10 +28,20 @@ Upload the CSV file using Swagger UI at `http://localhost:8000/docs`.
 ```
 
 ### Response Screenshot
-![Upload Document Success](images/upload_document.png)
+![Upload Document Success](images/csv_upload_document.png)
 
-when attempting to upload the same document getting 409 error as expected
-![Duplicate Upload Conflict](images/duplicate_upload.png)
+### Duplicate Upload (allow_reprocess = false)
+Uploading the exact same file bytes a second time should return a `409 Conflict` error:
+```json
+{
+  "error": "DUPLICATE_FILE",
+  "message": "This file has already been uploaded.",
+  "hint": "Pass ?allow_reprocess=true to re-parse the existing file.",
+  "existing_document_id": "9ac22654-67c7-4f07-b068-f684544c9fba"
+}
+```
+![Duplicate Upload Conflict](images/csv_duplicate_upload.png)
+
 ---
 
 ## 2. GET /api/v1/documents/{document_id}
@@ -57,7 +67,7 @@ Retrieve the metadata of the uploaded document using the `document_id` returned 
 ```
 
 ### Response Screenshot
-![Get Document Metadata](images/get_document.png)
+![Get Document Metadata](images/csv_get_document.png)
 
 ---
 
@@ -120,4 +130,17 @@ Retrieve the status and parser warnings (if any) of the processing job.
 ```
 
 ### Response Screenshot
-![Get Job Details](images/get_job.png)
+![Get Job Details](images/csv_get_job.png)
+
+---
+
+## 4. Database Records Verification
+
+Verify that the records are successfully committed to the database tables:
+* **bank_statements**: metadata corresponding to the bank statement (bank name, account holder, balance limits).
+* **bank_transactions**: multiple transaction records matching dates, values, descriptions, and directions (debit/credit).
+
+### Database Verification Screenshot (DBeaver / TablePlus / pgAdmin)
+*(User will attach the database tables screenshot here)*
+![Database Bank Statement Records 1](images/csv_database_records1.png)
+![Database Bank Statement Records 2](images/csv_database_records2.png)

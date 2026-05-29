@@ -409,20 +409,36 @@ finparse-api/
 
 ## Known Limitations & Assumptions
 
-1. **Invoice parsing (PDF)** — PDF validations are implemented but full text extraction and invoice parsing is not yet wired (marked TODO). Only CSV bank statements are fully parsed end-to-end.
+1. **Invoice parsing (PDF)** — Fully implemented using a local heuristic and table extraction pipeline (`pdfplumber`). For complex/varying formats in production, see the **Advanced ML/AI Suggestions** below.
 
-2. **OCR for scanned PDFs** — Detection is in place (`ocr_needed` flag), but Tesseract/cloud OCR integration is not yet connected. Scanned-only PDFs will produce no extracted data.
+2. **OCR for scanned PDFs** — Detection is in place (`ocr_needed` flag), but Tesseract/cloud OCR integration is not yet connected. Scanned-only PDFs will raise an `OCRFailedError`.
 
-3. **Vendor deduplication** — Exact case-insensitive match only. Fuzzy matching via `pg_trgm` is marked as TODO.
+3. **Vendor deduplication** — Exact case-insensitive match only. Fuzzy matching via `pg_trgm` or sentence embeddings is marked as TODO.
 
 4. **Cross-currency normalization** — Amounts stored in original currency. Base currency conversion with exchange rates is marked as TODO.
 
 5. **Authentication** — No auth implemented. Placeholder `uploaded_by` field ready for JWT/API key integration.
 
-6. **Background processing** — Celery is wired in `docker-compose.yml` but CSV parsing runs synchronously in the request for now. Move `_parse_csv()` to a Celery task for production.
+6. **Background processing** — Celery is wired in `docker-compose.yml` but parsing runs synchronously in the request for now. Move `_parse_csv()` and `_parse_pdf()` to Celery tasks for production.
 
 7. **Storage** — Local disk storage only. S3/GCS integration hooks are in place (swap `_save_to_storage()` in `DocumentService`).
 
 8. **Multi-invoice PDFs** — Schema supports `invoice_index` and `page_range_*` but multi-invoice splitting is not yet implemented in the parser.
+
+
+## Advanced ML/AI Document Parsing Suggestions
+
+In production systems, rule-based heuristics and standard regex engines can fail if invoices change layout or use complex multi-column structures. Below are recommended modern approaches to achieve near-100% parsing accuracy:
+
+1. **Multimodal LLMs (Recommended)**:
+   - Use APIs like **Gemini Flash / Pro** or **GPT-4o** to parse document pages (as images or extracted text layouts).
+   - Use Pydantic schemas with LLM Structured Outputs (JSON Schema enforcement) to parse invoice totals, vendor details, and line-item tables with high accuracy, automatically handling diverse formats.
+
+2. **Fine-Tuned Layout/Visual Transformers**:
+   - Use open-source transformer models like **LayoutLM** (v1/v2/v3) or **Donut** (OCR-free document understander) to map text and coordinates (bounding boxes) to structured tables and headers.
+
+3. **Document AI SaaS Engines**:
+   - Integrate with pre-trained specialized models like **Google Cloud Document AI (Invoice Parser)** or **AWS Textract (Analyze Expense)**. These services automatically resolve fields, line items, tax breakdowns, and currencies with built-in OCR.
+
 
 

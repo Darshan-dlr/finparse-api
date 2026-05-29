@@ -1,10 +1,16 @@
 """
 Integration tests for FastAPI endpoints.
 """
+from decimal import Decimal
+from datetime import date
+from unittest.mock import patch
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.bank_statement import BankStatement, BankTransaction
 from app.models.document import Document
+from app.models.invoice import Invoice, InvoiceLineItem, Vendor
+from app.parsers.pdf_parser import ParsedInvoice, ParsedInvoiceLineItem
+from app.validators.file_validator import ValidatedFile
 
 import uuid
 import pytest
@@ -113,3 +119,108 @@ async def test_upload_and_retrieve_bank_statement(
     # Get after delete should return 404
     get_after_delete = await async_client.get(f"/api/v1/documents/{doc_id}")
     assert get_after_delete.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_upload_and_retrieve_pdf_invoice(
+    async_client: AsyncClient, db_session: AsyncSession
+):
+    """Test full upload and parsing pipeline for a PDF invoice."""
+    # 100-byte valid PDF prefix bytes to pass FileValidator check
+    pdf_bytes = b"%PDF-1.5\n" + b"x" * 90
+
+    # Define mock return value
+    mock_parsed_invoice = ParsedInvoice(
+        invoice_number="INV-9988",
+        invoice_date=date(2026, 5, 29),
+        due_date=date(2026, 6, 29),
+        currency="USD",
+        subtotal=Decimal("2000.00"),
+        tax_amount=Decimal("160.00"),
+        discount_amount=Decimal("0.00"),
+        total_amount=Decimal("2160.00"),
+        raw_vendor_name="Global Tech Solutions",
+        confidence=Decimal("1.000"),
+        line_items=[
+            ParsedInvoiceLineItem(
+                line_number=1,
+                description="Custom Software Development",
+                quantity=Decimal("20"),
+                unit_price=Decimal("100.00"),
+                line_total=Decimal("2000.00"),
+            )
+        ],
+        warnings=[]
+    )
+
+    # ── Upload ────────────────────────────────────────────────────────────────
+    files = {"file": ("invoice_test.pdf", pdf_bytes, "application/pdf")}
+    
+    validated_mock = ValidatedFile(
+        content=pdf_bytes,
+        checksum_sha256="af3588dfb22c",
+        detected_mime="application/pdf",
+        safe_filename="invoice_test.pdf",
+        original_filename="invoice_test.pdf",
+        file_size_bytes=len(pdf_bytes),
+        file_extension=".pdf",
+        pdf_page_count=1,
+        pdf_is_encrypted=False,
+        ocr_needed=False,
+    )
+
+    from unittest.mock import AsyncMock
+    with patch("app.services.document_service.FileValidator.validate", new_callable=AsyncMock) as mock_validate:
+        mock_validate.return_value = validated_mock
+        with patch("app.services.document_service.PDFParser.parse", return_value=mock_parsed_invoice):
+            response = await async_client.post("/api/v1/documents/upload", files=files)
+            assert response.status_code == 202
+        
+        data = response.json()
+        assert "document_id" in data
+        assert "job_id" in data
+        assert data["status"] in ("completed", "partial")
+
+        doc_id = data["document_id"]
+        job_id = data["job_id"]
+
+        # ── Verify DB Persistence ──────────────────────────────────────────────
+        # Check vendor
+        vendor_result = await db_session.execute(
+            select(Vendor).where(Vendor.canonical_name == "Global Tech Solutions")
+        )
+        vendor = vendor_result.scalar_one_or_none()
+        assert vendor is not None
+
+        # Check invoice
+        invoice_result = await db_session.execute(
+            select(Invoice).where(Invoice.document_id == uuid.UUID(doc_id))
+        )
+        invoice = invoice_result.scalar_one_or_none()
+        assert invoice is not None
+        assert invoice.invoice_number == "INV-9988"
+        assert invoice.total_amount == Decimal("2160.00")
+        assert invoice.vendor_id == vendor.id
+
+        # Check line items
+        lines_result = await db_session.execute(
+            select(InvoiceLineItem).where(InvoiceLineItem.invoice_id == invoice.id)
+        )
+        line_items = lines_result.scalars().all()
+        assert len(line_items) == 1
+        assert line_items[0].description == "Custom Software Development"
+        assert line_items[0].line_total == Decimal("2000.00")
+
+        # ── Get Document ──────────────────────────────────────────────────────
+        doc_response = await async_client.get(f"/api/v1/documents/{doc_id}")
+        assert doc_response.status_code == 200
+        doc_data = doc_response.json()
+        assert doc_data["id"] == doc_id
+        assert doc_data["document_type"] == "invoice"
+        assert doc_data["file_type"] == "pdf"
+
+        # ── Get Job Status ────────────────────────────────────────────────────
+        job_response = await async_client.get(f"/api/v1/documents/{doc_id}/job")
+        assert job_response.status_code == 200
+        job_data = job_response.json()
+        assert job_data["status"] == "completed"
