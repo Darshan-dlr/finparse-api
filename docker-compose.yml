@@ -1,0 +1,89 @@
+version: "3.9"
+
+services:
+  # ── PostgreSQL ──────────────────────────────────────────────────────────────
+  db:
+    image: postgres:16-alpine
+    container_name: finparse_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-finparse}
+      POSTGRES_USER: ${POSTGRES_USER:-finparse_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-finparse_pass}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-finparse_user} -d ${POSTGRES_DB:-finparse}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Redis (Celery broker) ────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: finparse_redis
+    restart: unless-stopped
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── FastAPI Application ──────────────────────────────────────────────────────
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: finparse_api
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-finparse_user}:${POSTGRES_PASSWORD:-finparse_pass}@db:5432/${POSTGRES_DB:-finparse}
+      DATABASE_URL_SYNC: postgresql+psycopg2://${POSTGRES_USER:-finparse_user}:${POSTGRES_PASSWORD:-finparse_pass}@db:5432/${POSTGRES_DB:-finparse}
+      REDIS_URL: redis://redis:6379/0
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      MAX_PDF_SIZE_MB: ${MAX_PDF_SIZE_MB:-50}
+      MAX_CSV_SIZE_MB: ${MAX_CSV_SIZE_MB:-25}
+      MAX_PDF_PAGES: ${MAX_PDF_PAGES:-200}
+      MAX_CSV_ROWS: ${MAX_CSV_ROWS:-100000}
+      STORAGE_PATH: /app/uploads
+    ports:
+      - "${API_PORT:-8000}:8000"
+    volumes:
+      - ./uploads:/app/uploads
+      - .:/app
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+  # ── Celery Worker (optional background parsing) ──────────────────────────────
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: finparse_worker
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-finparse_user}:${POSTGRES_PASSWORD:-finparse_pass}@db:5432/${POSTGRES_DB:-finparse}
+      DATABASE_URL_SYNC: postgresql+psycopg2://${POSTGRES_USER:-finparse_user}:${POSTGRES_PASSWORD:-finparse_pass}@db:5432/${POSTGRES_DB:-finparse}
+      REDIS_URL: redis://redis:6379/0
+      STORAGE_PATH: /app/uploads
+    volumes:
+      - ./uploads:/app/uploads
+      - .:/app
+    command: celery -A app.worker.celery_app worker --loglevel=info --concurrency=2
+
+volumes:
+  postgres_data:

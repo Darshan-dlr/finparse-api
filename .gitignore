@@ -1,0 +1,72 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+eggs/
+parts/
+var/
+sdist/
+develop-eggs/
+.installed.cfg
+lib/
+lib64/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+.env
+!.env.example
+
+# Testing
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+.tox/
+*.cover
+*.log
+
+# IDEs
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Docker
+.dockerignore
+
+# Uploads (never commit user files)
+uploads/
+*.pdf
+*.csv
+!tests/sample_files/*.csv
+
+# Database
+*.db
+*.sqlite3
+
+# Alembic (keep versions, not cache)
+migrations/__pycache__/
+
+# Logs
+logs/
+*.log
+
+# OS
+.DS_Store
+ehthumbs.db
+Desktop.ini

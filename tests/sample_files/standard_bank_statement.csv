@@ -1,0 +1,14 @@
+Date,Description,Debit,Credit,Balance
+01/05/2026,Opening Balance,,,10000.00
+02/05/2026,UPI/NEFT - Amazon Payment,1500.00,,8500.00
+05/05/2026,Salary Credit - Employer Ltd,,50000.00,58500.00
+07/05/2026,ATM Withdrawal - HDFC ATM,5000.00,,53500.00
+10/05/2026,Transfer to Savings - NEFT,10000.00,,43500.00
+12/05/2026,Interest Credit - Savings,,250.50,43750.50
+15/05/2026,Mobile Recharge - Jio,299.00,,43451.50
+18/05/2026,EMI Debit - HDFC Home Loan,15000.00,,28451.50
+20/05/2026,UPI - Swiggy Food Order,450.00,,28001.50
+22/05/2026,Dividend Credit - Mutual Fund,,2500.00,30501.50
+25/05/2026,Electric Bill - MSEB,1200.00,,29301.50
+28/05/2026,Cheque Payment - Rent,20000.00,,9301.50
+30/05/2026,Closing Balance,,,9301.50

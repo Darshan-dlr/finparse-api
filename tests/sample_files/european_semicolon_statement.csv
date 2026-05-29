@@ -1,0 +1,9 @@
+Datum;Buchungstext;Betrag;Währung;Kontostand
+01.05.2026;Eröffnungssaldo;;;10.000,00
+02.05.2026;Amazon Einkauf;-1.500,00;EUR;8.500,00
+05.05.2026;Gehalt Eingang;50.000,00;EUR;58.500,00
+07.05.2026;Miete Überweisung;-800,00;EUR;57.700,00
+10.05.2026;Strom Rechnung;-120,50;EUR;57.579,50
+15.05.2026;Zinsen Gutschrift;250,75;EUR;57.830,25
+20.05.2026;Restaurant Zahlung;-45,00;EUR;57.785,25
+25.05.2026;Versicherung;-230,00;EUR;57.555,25
